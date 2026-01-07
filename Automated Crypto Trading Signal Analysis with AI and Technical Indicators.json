@@ -1,0 +1,978 @@
+{
+  "name": "Automated Crypto Trading Signal Analysis with AI and Technical Indicators",
+  "nodes": [
+    {
+      "parameters": {
+        "assignments": {
+          "assignments": [
+            {
+              "id": "id-1",
+              "name": "symbol",
+              "value": "BTC/USDT",
+              "type": "string"
+            },
+            {
+              "id": "id-2",
+              "name": "timeframe",
+              "value": "1h",
+              "type": "string"
+            },
+            {
+              "id": "id-3",
+              "name": "marketDataApiUrl",
+              "value": "<__PLACEHOLDER_VALUE__DEX API endpoint URL for market data__>",
+              "type": "string"
+            },
+            {
+              "id": "id-4",
+              "name": "newsApiUrl",
+              "value": "<__PLACEHOLDER_VALUE__Crypto news API endpoint URL__>",
+              "type": "string"
+            }
+          ]
+        },
+        "includeOtherFields": true,
+        "options": {}
+      },
+      "id": "713b93e9-02f8-46b0-b0ae-6680dc39402f",
+      "name": "Workflow Configuration",
+      "type": "n8n-nodes-base.set",
+      "typeVersion": 3.4,
+      "position": [
+        -1488,
+        1840
+      ]
+    },
+    {
+      "parameters": {
+        "amount": 1
+      },
+      "id": "aee45ff3-ea2b-4478-b297-5c6ee863b13c",
+      "name": "Wait 1",
+      "type": "n8n-nodes-base.wait",
+      "typeVersion": 1.1,
+      "position": [
+        -928,
+        640
+      ],
+      "webhookId": "5840faf1-5d2f-4d7a-989a-4ffab9bbf873"
+    },
+    {
+      "parameters": {
+        "amount": 2
+      },
+      "id": "6dad4115-db8e-4841-bf3d-49f73a964b15",
+      "name": "Wait 2",
+      "type": "n8n-nodes-base.wait",
+      "typeVersion": 1.1,
+      "position": [
+        -928,
+        1040
+      ],
+      "webhookId": "b80d586a-57e3-4043-b545-b6bdea28d1a7"
+    },
+    {
+      "parameters": {
+        "amount": 3
+      },
+      "id": "cd2edd5f-fda7-4821-bb08-5a20811e585d",
+      "name": "Wait 3",
+      "type": "n8n-nodes-base.wait",
+      "typeVersion": 1.1,
+      "position": [
+        -928,
+        1456
+      ],
+      "webhookId": "5e9931d3-545c-4052-90ac-c866b4682f92"
+    },
+    {
+      "parameters": {
+        "jsCode": "// Calculate RSI (Relative Strength Index)\nconst configData = $('Workflow Configuration').first().json;\nconst prices = configData.historicalPrices || [];\nconst period = configData.rsiPeriod || 14;\n\nif (prices.length < period + 1) {\n  return [{\n    json: {\n      indicator: 'RSI',\n      value: null,\n      signal: 'INSUFFICIENT_DATA',\n      message: `Need at least ${period + 1} price points for RSI calculation`\n    }\n  }];\n}\n\n// Calculate price changes\nconst changes = [];\nfor (let i = 1; i < prices.length; i++) {\n  changes.push(prices[i] - prices[i - 1]);\n}\n\n// Separate gains and losses\nconst gains = changes.map(change => change > 0 ? change : 0);\nconst losses = changes.map(change => change < 0 ? Math.abs(change) : 0);\n\n// Calculate average gain and loss for the period\nconst avgGain = gains.slice(0, period).reduce((a, b) => a + b, 0) / period;\nconst avgLoss = losses.slice(0, period).reduce((a, b) => a + b, 0) / period;\n\n// Calculate RS and RSI\nconst rs = avgLoss === 0 ? 100 : avgGain / avgLoss;\nconst rsi = 100 - (100 / (1 + rs));\n\n// Determine signal\nlet signal = 'NEUTRAL';\nif (rsi < 30) {\n  signal = 'OVERSOLD_BUY';\n} else if (rsi > 70) {\n  signal = 'OVERBOUGHT_SELL';\n}\n\nreturn [{\n  json: {\n    indicator: 'RSI',\n    value: rsi.toFixed(2),\n    signal: signal,\n    period: period,\n    interpretation: rsi < 30 ? 'Strong buy signal' : rsi > 70 ? 'Strong sell signal' : 'Neutral'\n  }\n}];"
+      },
+      "id": "b003c6b6-764b-4956-a237-f8bf8e2c8f3c",
+      "name": "Calculate RSI",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        -224,
+        384
+      ]
+    },
+    {
+      "parameters": {
+        "jsCode": "// Calculate Stochastic Oscillator (STOCH)\n// Input: Historical price data with high, low, and close prices\n// Output: %K and %D values\n\nconst items = $input.all();\nconst period = 14; // Standard period for STOCH\nconst smoothK = 3; // Smoothing period for %K\nconst smoothD = 3; // Smoothing period for %D\n\n// Extract price data\nconst prices = items.map(item => ({\n  high: parseFloat(item.json.high),\n  low: parseFloat(item.json.low),\n  close: parseFloat(item.json.close)\n}));\n\nif (prices.length < period) {\n  return [{\n    json: {\n      indicator: 'STOCH',\n      error: 'Insufficient data',\n      percentK: null,\n      percentD: null,\n      signal: 'NEUTRAL'\n    }\n  }];\n}\n\n// Calculate %K values\nconst percentK = [];\nfor (let i = period - 1; i < prices.length; i++) {\n  const slice = prices.slice(i - period + 1, i + 1);\n  const highest = Math.max(...slice.map(p => p.high));\n  const lowest = Math.min(...slice.map(p => p.low));\n  const currentClose = prices[i].close;\n  \n  const k = ((currentClose - lowest) / (highest - lowest)) * 100;\n  percentK.push(k);\n}\n\n// Smooth %K (SMA of %K)\nconst smoothedK = [];\nfor (let i = smoothK - 1; i < percentK.length; i++) {\n  const slice = percentK.slice(i - smoothK + 1, i + 1);\n  const avg = slice.reduce((sum, val) => sum + val, 0) / smoothK;\n  smoothedK.push(avg);\n}\n\n// Calculate %D (SMA of smoothed %K)\nconst percentD = [];\nfor (let i = smoothD - 1; i < smoothedK.length; i++) {\n  const slice = smoothedK.slice(i - smoothD + 1, i + 1);\n  const avg = slice.reduce((sum, val) => sum + val, 0) / smoothD;\n  percentD.push(avg);\n}\n\n// Get latest values\nconst latestK = smoothedK[smoothedK.length - 1];\nconst latestD = percentD[percentD.length - 1];\n\n// Determine signal\nlet signal = 'NEUTRAL';\nif (latestK < 20 && latestK > latestD) {\n  signal = 'BUY'; // Oversold and %K crossing above %D\n} else if (latestK > 80 && latestK < latestD) {\n  signal = 'SELL'; // Overbought and %K crossing below %D\n} else if (latestK < 20) {\n  signal = 'OVERSOLD';\n} else if (latestK > 80) {\n  signal = 'OVERBOUGHT';\n}\n\nreturn [{\n  json: {\n    indicator: 'STOCH',\n    percentK: latestK.toFixed(2),\n    percentD: latestD.toFixed(2),\n    signal: signal,\n    interpretation: `%K: ${latestK.toFixed(2)}, %D: ${latestD.toFixed(2)} - ${signal}`\n  }\n}];"
+      },
+      "id": "29df1b84-dbaf-46c9-abf2-7fa0977e8436",
+      "name": "Calculate STOCH",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        -336,
+        528
+      ]
+    },
+    {
+      "parameters": {
+        "jsCode": "// Calculate ADX (Average Directional Index)\n// ADX measures trend strength on a scale of 0-100\n\nconst items = $input.all();\nconst marketData = items[0].json;\n\nif (!marketData || !marketData.prices || marketData.prices.length < 14) {\n  return [{\n    json: {\n      indicator: 'ADX',\n      error: 'Insufficient data for ADX calculation (need at least 14 periods)'\n    }\n  }];\n}\n\nconst prices = marketData.prices;\nconst period = 14;\n\n// Calculate True Range (TR)\nfunction calculateTR(high, low, prevClose) {\n  const hl = high - low;\n  const hc = Math.abs(high - prevClose);\n  const lc = Math.abs(low - prevClose);\n  return Math.max(hl, hc, lc);\n}\n\n// Calculate Directional Movement\nfunction calculateDM(high, low, prevHigh, prevLow) {\n  const upMove = high - prevHigh;\n  const downMove = prevLow - low;\n  \n  let plusDM = 0;\n  let minusDM = 0;\n  \n  if (upMove > downMove && upMove > 0) {\n    plusDM = upMove;\n  }\n  if (downMove > upMove && downMove > 0) {\n    minusDM = downMove;\n  }\n  \n  return { plusDM, minusDM };\n}\n\nconst trValues = [];\nconst plusDMValues = [];\nconst minusDMValues = [];\n\n// Calculate TR and DM for each period\nfor (let i = 1; i < prices.length; i++) {\n  const tr = calculateTR(prices[i].high, prices[i].low, prices[i - 1].close);\n  trValues.push(tr);\n  \n  const dm = calculateDM(prices[i].high, prices[i].low, prices[i - 1].high, prices[i - 1].low);\n  plusDMValues.push(dm.plusDM);\n  minusDMValues.push(dm.minusDM);\n}\n\nif (trValues.length < period) {\n  return [{\n    json: {\n      indicator: 'ADX',\n      error: 'Insufficient data for ADX calculation'\n    }\n  }];\n}\n\n// Calculate smoothed TR and DM (using Wilder's smoothing)\nlet smoothedTR = trValues.slice(0, period).reduce((a, b) => a + b, 0);\nlet smoothedPlusDM = plusDMValues.slice(0, period).reduce((a, b) => a + b, 0);\nlet smoothedMinusDM = minusDMValues.slice(0, period).reduce((a, b) => a + b, 0);\n\nconst diPlusValues = [];\nconst diMinusValues = [];\nconst dxValues = [];\n\n// Calculate DI+ and DI-\nfor (let i = period; i < trValues.length; i++) {\n  smoothedTR = smoothedTR - (smoothedTR / period) + trValues[i];\n  smoothedPlusDM = smoothedPlusDM - (smoothedPlusDM / period) + plusDMValues[i];\n  smoothedMinusDM = smoothedMinusDM - (smoothedMinusDM / period) + minusDMValues[i];\n  \n  const diPlus = (smoothedPlusDM / smoothedTR) * 100;\n  const diMinus = (smoothedMinusDM / smoothedTR) * 100;\n  \n  diPlusValues.push(diPlus);\n  diMinusValues.push(diMinus);\n  \n  // Calculate DX\n  const dx = (Math.abs(diPlus - diMinus) / (diPlus + diMinus)) * 100;\n  dxValues.push(dx);\n}\n\nif (dxValues.length < period) {\n  return [{\n    json: {\n      indicator: 'ADX',\n      error: 'Insufficient data for ADX calculation'\n    }\n  }];\n}\n\n// Calculate ADX (smoothed DX)\nlet adx = dxValues.slice(0, period).reduce((a, b) => a + b, 0) / period;\n\nfor (let i = period; i < dxValues.length; i++) {\n  adx = ((adx * (period - 1)) + dxValues[i]) / period;\n}\n\nconst currentDIPlus = diPlusValues[diPlusValues.length - 1];\nconst currentDIMinus = diMinusValues[diMinusValues.length - 1];\n\n// Interpret ADX\nlet signal = 'NEUTRAL';\nlet strength = 'Weak trend';\n\nif (adx > 25) {\n  strength = 'Strong trend';\n  if (currentDIPlus > currentDIMinus) {\n    signal = 'BUY';\n  } else {\n    signal = 'SELL';\n  }\n} else if (adx > 20) {\n  strength = 'Moderate trend';\n  if (currentDIPlus > currentDIMinus) {\n    signal = 'BUY';\n  } else {\n    signal = 'SELL';\n  }\n}\n\nreturn [{\n  json: {\n    indicator: 'ADX',\n    value: parseFloat(adx.toFixed(2)),\n    diPlus: parseFloat(currentDIPlus.toFixed(2)),\n    diMinus: parseFloat(currentDIMinus.toFixed(2)),\n    signal: signal,\n    strength: strength,\n    interpretation: `ADX: ${adx.toFixed(2)} - ${strength}. DI+: ${currentDIPlus.toFixed(2)}, DI-: ${currentDIMinus.toFixed(2)}`\n  }\n}];"
+      },
+      "id": "a7e06c6d-8965-40f1-baa0-5d067c9cfb78",
+      "name": "Calculate ADX",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        -496,
+        704
+      ]
+    },
+    {
+      "parameters": {
+        "jsCode": "// Calculate Simple Moving Average (SMA)\nconst items = $input.all();\n\n// Get market data from previous node\nconst marketData = items[0].json;\n\n// Function to calculate SMA\nfunction calculateSMA(data, period = 14) {\n  if (!data || data.length < period) {\n    return null;\n  }\n  \n  const sum = data.slice(-period).reduce((acc, val) => acc + val, 0);\n  return sum / period;\n}\n\n// Extract closing prices (assuming data structure from market data)\nlet closePrices = [];\n\nif (marketData.prices && Array.isArray(marketData.prices)) {\n  closePrices = marketData.prices.map(p => parseFloat(p.close || p));\n} else if (marketData.close) {\n  closePrices = Array.isArray(marketData.close) ? marketData.close : [marketData.close];\n} else {\n  // Fallback: try to extract from raw data\n  closePrices = [parseFloat(marketData.price || 0)];\n}\n\n// Calculate SMA for different periods\nconst sma14 = calculateSMA(closePrices, 14);\nconst sma50 = calculateSMA(closePrices, 50);\nconst sma200 = calculateSMA(closePrices, 200);\n\n// Determine signal\nlet signal = 'NEUTRAL';\nif (sma14 && sma50) {\n  if (sma14 > sma50) {\n    signal = 'BULLISH';\n  } else if (sma14 < sma50) {\n    signal = 'BEARISH';\n  }\n}\n\nreturn [\n  {\n    json: {\n      indicator: 'SMA',\n      sma14: sma14,\n      sma50: sma50,\n      sma200: sma200,\n      signal: signal,\n      timestamp: new Date().toISOString()\n    }\n  }\n];"
+      },
+      "id": "3a9f6627-80cf-46e9-adf2-8762cd2cee1f",
+      "name": "Calculate SMA",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        -432,
+        848
+      ]
+    },
+    {
+      "parameters": {
+        "jsCode": "// Calculate Bollinger Bands (BB)\n// BB uses a simple moving average with upper and lower bands based on standard deviation\n\nconst items = $input.all();\n\nif (!items || items.length === 0) {\n  return [];\n}\n\n// Get price data from input\nconst prices = items.map(item => item.json.close || item.json.price || 0);\n\n// BB parameters\nconst period = 20; // Standard BB period\nconst stdDevMultiplier = 2; // Standard deviation multiplier\n\nif (prices.length < period) {\n  return [{\n    json: {\n      indicator: 'BB',\n      error: 'Insufficient data',\n      dataPoints: prices.length,\n      required: period\n    }\n  }];\n}\n\n// Calculate Simple Moving Average (SMA)\nfunction calculateSMA(data, period) {\n  const sum = data.slice(-period).reduce((a, b) => a + b, 0);\n  return sum / period;\n}\n\n// Calculate Standard Deviation\nfunction calculateStdDev(data, period, sma) {\n  const slice = data.slice(-period);\n  const squaredDiffs = slice.map(price => Math.pow(price - sma, 2));\n  const variance = squaredDiffs.reduce((a, b) => a + b, 0) / period;\n  return Math.sqrt(variance);\n}\n\nconst sma = calculateSMA(prices, period);\nconst stdDev = calculateStdDev(prices, period, sma);\n\nconst upperBand = sma + (stdDevMultiplier * stdDev);\nconst lowerBand = sma - (stdDevMultiplier * stdDev);\nconst currentPrice = prices[prices.length - 1];\n\n// Calculate position relative to bands (0-100 scale)\nconst bandWidth = upperBand - lowerBand;\nconst pricePosition = ((currentPrice - lowerBand) / bandWidth) * 100;\n\n// Determine signal\nlet signal = 'NEUTRAL';\nif (currentPrice <= lowerBand) {\n  signal = 'BUY'; // Price at or below lower band - oversold\n} else if (currentPrice >= upperBand) {\n  signal = 'SELL'; // Price at or above upper band - overbought\n} else if (pricePosition < 30) {\n  signal = 'WEAK_BUY';\n} else if (pricePosition > 70) {\n  signal = 'WEAK_SELL';\n}\n\nreturn [{\n  json: {\n    indicator: 'BB',\n    signal: signal,\n    currentPrice: currentPrice,\n    middleBand: sma,\n    upperBand: upperBand,\n    lowerBand: lowerBand,\n    bandWidth: bandWidth,\n    pricePosition: pricePosition.toFixed(2),\n    period: period,\n    stdDevMultiplier: stdDevMultiplier,\n    timestamp: new Date().toISOString()\n  }\n}];"
+      },
+      "id": "55a8f41b-a417-4ad6-80e6-0d652b8171ca",
+      "name": "Calculate BB",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        -576,
+        928
+      ]
+    },
+    {
+      "parameters": {
+        "jsCode": "// Calculate CCI (Commodity Channel Index)\n// CCI = (Typical Price - SMA of Typical Price) / (0.015 * Mean Deviation)\n\nconst items = $input.all();\n\nif (!items || items.length === 0) {\n  return [{ json: { error: 'No input data' } }];\n}\n\n// Get price data from input\nconst priceData = items[0].json.priceData || [];\n\nif (priceData.length < 20) {\n  return [{ json: { error: 'Insufficient data for CCI calculation (need at least 20 periods)' } }];\n}\n\nconst period = 20; // Standard CCI period\nconst constant = 0.015;\n\n// Calculate Typical Price for each period\nconst typicalPrices = priceData.map(candle => {\n  return (parseFloat(candle.high) + parseFloat(candle.low) + parseFloat(candle.close)) / 3;\n});\n\n// Calculate SMA of Typical Price\nfunction calculateSMA(data, period) {\n  const sum = data.slice(-period).reduce((acc, val) => acc + val, 0);\n  return sum / period;\n}\n\nconst smaTP = calculateSMA(typicalPrices, period);\n\n// Calculate Mean Deviation\nfunction calculateMeanDeviation(data, sma, period) {\n  const recentData = data.slice(-period);\n  const deviations = recentData.map(val => Math.abs(val - sma));\n  return deviations.reduce((acc, val) => acc + val, 0) / period;\n}\n\nconst meanDeviation = calculateMeanDeviation(typicalPrices, smaTP, period);\n\n// Calculate CCI\nconst currentTypicalPrice = typicalPrices[typicalPrices.length - 1];\nconst cci = (currentTypicalPrice - smaTP) / (constant * meanDeviation);\n\n// Determine signal\nlet signal = 'NEUTRAL';\nif (cci > 100) {\n  signal = 'OVERBOUGHT';\n} else if (cci < -100) {\n  signal = 'OVERSOLD';\n}\n\nreturn [{\n  json: {\n    indicator: 'CCI',\n    value: Math.round(cci * 100) / 100,\n    signal: signal,\n    period: period,\n    interpretation: cci > 100 ? 'Strong uptrend, potential reversal' : \n                    cci < -100 ? 'Strong downtrend, potential reversal' : \n                    'Normal trading range'\n  }\n}];"
+      },
+      "id": "286e85f4-60d3-4454-accc-0289c597737b",
+      "name": "Calculate CCI",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        -368,
+        1040
+      ]
+    },
+    {
+      "parameters": {
+        "jsCode": "// Calculate EMA (Exponential Moving Average)\nconst items = $input.all();\n\n// Get market data from previous node\nconst marketData = items[0].json;\n\n// EMA calculation function\nfunction calculateEMA(data, period) {\n  if (!data || data.length < period) {\n    return null;\n  }\n  \n  const k = 2 / (period + 1);\n  let ema = data.slice(0, period).reduce((sum, val) => sum + val, 0) / period;\n  \n  for (let i = period; i < data.length; i++) {\n    ema = data[i] * k + ema * (1 - k);\n  }\n  \n  return ema;\n}\n\n// Extract closing prices from market data\nconst closePrices = marketData.prices || [];\n\n// Calculate EMA for different periods\nconst ema12 = calculateEMA(closePrices, 12);\nconst ema26 = calculateEMA(closePrices, 26);\nconst ema50 = calculateEMA(closePrices, 50);\nconst ema200 = calculateEMA(closePrices, 200);\n\n// Determine signal based on EMA\nlet signal = 'NEUTRAL';\nif (ema12 && ema26) {\n  if (ema12 > ema26) {\n    signal = 'BULLISH';\n  } else if (ema12 < ema26) {\n    signal = 'BEARISH';\n  }\n}\n\nreturn [\n  {\n    json: {\n      indicator: 'EMA',\n      ema12: ema12,\n      ema26: ema26,\n      ema50: ema50,\n      ema200: ema200,\n      signal: signal,\n      timestamp: new Date().toISOString()\n    }\n  }\n];"
+      },
+      "id": "ef42a39e-284c-4426-8c13-31fe9be0ffc8",
+      "name": "Calculate EMA",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        -480,
+        1168
+      ]
+    },
+    {
+      "parameters": {
+        "jsCode": "// Calculate RVI (Relative Vigor Index)\n// RVI measures the conviction of a recent price action and the likelihood that it will continue\n\nconst items = $input.all();\n\nif (!items || items.length === 0) {\n  return [{ json: { error: 'No input data' } }];\n}\n\n// Get price data from previous node\nconst priceData = items[0].json.priceData || [];\n\nif (priceData.length < 10) {\n  return [{ json: { error: 'Insufficient data for RVI calculation', rvi: null, signal: null } }];\n}\n\nconst period = 10; // Standard RVI period\n\n// Calculate RVI\nfunction calculateRVI(data, period) {\n  const closes = data.map(d => parseFloat(d.close));\n  const opens = data.map(d => parseFloat(d.open));\n  const highs = data.map(d => parseFloat(d.high));\n  const lows = data.map(d => parseFloat(d.low));\n  \n  const rviValues = [];\n  const signalValues = [];\n  \n  for (let i = period - 1; i < data.length; i++) {\n    let numeratorSum = 0;\n    let denominatorSum = 0;\n    \n    for (let j = 0; j < period; j++) {\n      const idx = i - j;\n      const closeOpen = closes[idx] - opens[idx];\n      const highLow = highs[idx] - lows[idx];\n      \n      // Weighted average (1,2,2,1 pattern)\n      let weight = 1;\n      if (j === 1 || j === 2) weight = 2;\n      \n      numeratorSum += closeOpen * weight;\n      denominatorSum += highLow * weight;\n    }\n    \n    const rvi = denominatorSum !== 0 ? numeratorSum / denominatorSum : 0;\n    rviValues.push(rvi);\n  }\n  \n  // Calculate signal line (4-period SMA of RVI)\n  for (let i = 3; i < rviValues.length; i++) {\n    const signal = (rviValues[i] + 2 * rviValues[i-1] + 2 * rviValues[i-2] + rviValues[i-3]) / 6;\n    signalValues.push(signal);\n  }\n  \n  return {\n    rvi: rviValues[rviValues.length - 1],\n    signal: signalValues[signalValues.length - 1] || 0,\n    values: rviValues,\n    signalValues: signalValues\n  };\n}\n\nconst result = calculateRVI(priceData, period);\n\n// Determine signal\nlet signal = 'NEUTRAL';\nif (result.rvi > result.signal && result.rvi > 0) {\n  signal = 'BULLISH';\n} else if (result.rvi < result.signal && result.rvi < 0) {\n  signal = 'BEARISH';\n}\n\nreturn [{\n  json: {\n    indicator: 'RVI',\n    rvi: result.rvi,\n    signal: result.signal,\n    interpretation: signal,\n    period: period,\n    timestamp: new Date().toISOString()\n  }\n}];"
+      },
+      "id": "c1370c78-e0a4-4410-93f7-cf23559afb51",
+      "name": "Calculate RVI",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        -704,
+        1280
+      ]
+    },
+    {
+      "parameters": {
+        "jsCode": "// Calculate Money Flow Index (MFI)\n// MFI is a momentum indicator that uses price and volume to identify overbought or oversold conditions\n// MFI > 80 = overbought, MFI < 20 = oversold\n\nconst period = 14; // Standard MFI period\n\n// Get market data from previous node\nconst marketData = $input.all();\n\nif (!marketData || marketData.length === 0) {\n  return [{ json: { error: 'No market data available' } }];\n}\n\n// Extract OHLCV data\nconst data = marketData[0].json;\nif (!data.close || !data.high || !data.low || !data.volume) {\n  return [{ json: { error: 'Missing required price or volume data' } }];\n}\n\nconst closes = data.close;\nconst highs = data.high;\nconst lows = data.low;\nconst volumes = data.volume;\n\nif (closes.length < period + 1) {\n  return [{ json: { error: `Insufficient data. Need at least ${period + 1} periods` } }];\n}\n\n// Calculate Typical Price for each period\nconst typicalPrices = [];\nfor (let i = 0; i < closes.length; i++) {\n  typicalPrices.push((highs[i] + lows[i] + closes[i]) / 3);\n}\n\n// Calculate Raw Money Flow\nconst rawMoneyFlow = [];\nfor (let i = 0; i < typicalPrices.length; i++) {\n  rawMoneyFlow.push(typicalPrices[i] * volumes[i]);\n}\n\n// Calculate MFI values\nconst mfiValues = [];\n\nfor (let i = period; i < typicalPrices.length; i++) {\n  let positiveFlow = 0;\n  let negativeFlow = 0;\n  \n  // Sum positive and negative money flows over the period\n  for (let j = i - period + 1; j <= i; j++) {\n    if (typicalPrices[j] > typicalPrices[j - 1]) {\n      positiveFlow += rawMoneyFlow[j];\n    } else if (typicalPrices[j] < typicalPrices[j - 1]) {\n      negativeFlow += rawMoneyFlow[j];\n    }\n  }\n  \n  // Calculate Money Flow Ratio and MFI\n  let mfi;\n  if (negativeFlow === 0) {\n    mfi = 100;\n  } else {\n    const moneyFlowRatio = positiveFlow / negativeFlow;\n    mfi = 100 - (100 / (1 + moneyFlowRatio));\n  }\n  \n  mfiValues.push(mfi);\n}\n\nconst currentMFI = mfiValues[mfiValues.length - 1];\n\n// Determine signal\nlet signal = 'NEUTRAL';\nif (currentMFI > 80) {\n  signal = 'OVERBOUGHT';\n} else if (currentMFI < 20) {\n  signal = 'OVERSOLD';\n}\n\nreturn [{\n  json: {\n    indicator: 'MFI',\n    value: parseFloat(currentMFI.toFixed(2)),\n    signal: signal,\n    period: period,\n    interpretation: currentMFI > 80 ? 'Strong selling pressure expected' : \n                    currentMFI < 20 ? 'Strong buying opportunity' : \n                    'Normal market conditions'\n  }\n}];"
+      },
+      "id": "bf7a012f-5341-4612-ad6e-ffa3474bc8bd",
+      "name": "Calculate MFI",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        -496,
+        1360
+      ]
+    },
+    {
+      "parameters": {
+        "jsCode": "// Calculate Momentum (MOM) indicator\n// MOM measures the rate of change in price over a specified period\n\nconst items = $input.all();\n\nif (!items || items.length === 0) {\n  return [];\n}\n\n// Get price data from input\nconst prices = items.map(item => parseFloat(item.json.close || item.json.price || 0));\n\n// MOM period (typically 10 or 14)\nconst period = 10;\n\nif (prices.length < period) {\n  return [{\n    json: {\n      indicator: 'MOM',\n      error: 'Insufficient data',\n      required: period,\n      available: prices.length\n    }\n  }];\n}\n\n// Calculate Momentum\n// MOM = Current Price - Price n periods ago\nconst currentPrice = prices[prices.length - 1];\nconst pastPrice = prices[prices.length - 1 - period];\nconst momentum = currentPrice - pastPrice;\n\n// Calculate percentage change\nconst momentumPercent = ((currentPrice - pastPrice) / pastPrice) * 100;\n\n// Determine signal\nlet signal = 'NEUTRAL';\nif (momentum > 0 && momentumPercent > 2) {\n  signal = 'BUY';\n} else if (momentum < 0 && momentumPercent < -2) {\n  signal = 'SELL';\n}\n\nreturn [{\n  json: {\n    indicator: 'MOM',\n    value: momentum,\n    percentChange: momentumPercent,\n    currentPrice: currentPrice,\n    pastPrice: pastPrice,\n    period: period,\n    signal: signal,\n    timestamp: new Date().toISOString()\n  }\n}];"
+      },
+      "id": "363993e2-62cf-4d4c-87ee-8b7f6d45f7fc",
+      "name": "Calculate MOM",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        -368,
+        1456
+      ]
+    },
+    {
+      "parameters": {
+        "jsCode": "// T3 (Tillson T3) Moving Average Calculation\n// T3 is a smoothed moving average that reduces lag\n\nconst items = $input.all();\n\nif (!items || items.length === 0) {\n  return [{ json: { error: 'No input data' } }];\n}\n\n// Get market data from previous nodes\nconst marketData = items[0].json.marketData || items[0].json;\n\nif (!marketData || !marketData.close || !Array.isArray(marketData.close)) {\n  return [{ json: { error: 'Invalid market data format' } }];\n}\n\nconst closes = marketData.close;\nconst period = 5; // T3 period\nconst volumeFactor = 0.7; // Volume factor (typically 0.7)\n\n// Helper function to calculate EMA\nfunction calculateEMA(data, period) {\n  const k = 2 / (period + 1);\n  const ema = [data[0]];\n  \n  for (let i = 1; i < data.length; i++) {\n    ema.push(data[i] * k + ema[i - 1] * (1 - k));\n  }\n  \n  return ema;\n}\n\n// Calculate T3 using multiple EMA passes\nconst c1 = -volumeFactor * volumeFactor * volumeFactor;\nconst c2 = 3 * volumeFactor * volumeFactor + 3 * volumeFactor * volumeFactor * volumeFactor;\nconst c3 = -6 * volumeFactor * volumeFactor - 3 * volumeFactor - 3 * volumeFactor * volumeFactor * volumeFactor;\nconst c4 = 1 + 3 * volumeFactor + volumeFactor * volumeFactor * volumeFactor + 3 * volumeFactor * volumeFactor;\n\n// Apply 6 EMA passes\nconst e1 = calculateEMA(closes, period);\nconst e2 = calculateEMA(e1, period);\nconst e3 = calculateEMA(e2, period);\nconst e4 = calculateEMA(e3, period);\nconst e5 = calculateEMA(e4, period);\nconst e6 = calculateEMA(e5, period);\n\n// Calculate T3 values\nconst t3Values = [];\nfor (let i = 0; i < closes.length; i++) {\n  const t3 = c1 * e6[i] + c2 * e5[i] + c3 * e4[i] + c4 * e3[i];\n  t3Values.push(t3);\n}\n\nconst currentT3 = t3Values[t3Values.length - 1];\nconst previousT3 = t3Values[t3Values.length - 2];\nconst currentPrice = closes[closes.length - 1];\n\n// Determine signal\nlet signal = 'NEUTRAL';\nif (currentPrice > currentT3 && currentT3 > previousT3) {\n  signal = 'BUY';\n} else if (currentPrice < currentT3 && currentT3 < previousT3) {\n  signal = 'SELL';\n}\n\nreturn [{\n  json: {\n    indicator: 'T3',\n    value: currentT3,\n    previousValue: previousT3,\n    currentPrice: currentPrice,\n    signal: signal,\n    period: period,\n    volumeFactor: volumeFactor,\n    trend: currentT3 > previousT3 ? 'UP' : 'DOWN'\n  }\n}];"
+      },
+      "id": "236f99cb-3528-410b-ac09-b0e72b1d7c67",
+      "name": "Calculate T3",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        -480,
+        1568
+      ]
+    },
+    {
+      "parameters": {
+        "jsCode": "// MACD Extended (MACDEXT) Calculation\n// MACD = 12-period EMA - 26-period EMA\n// Signal Line = 9-period EMA of MACD\n// Histogram = MACD - Signal Line\n\nconst items = $input.all();\n\nif (!items || items.length === 0) {\n  return [];\n}\n\n// Get price data from previous nodes\nconst priceData = items[0].json.prices || [];\n\nif (priceData.length < 26) {\n  return [{\n    json: {\n      indicator: 'MACDEXT',\n      error: 'Insufficient data for MACD calculation (need at least 26 periods)',\n      signal: 'NEUTRAL'\n    }\n  }];\n}\n\n// Function to calculate EMA\nfunction calculateEMA(data, period) {\n  const k = 2 / (period + 1);\n  let ema = data[0];\n  \n  for (let i = 1; i < data.length; i++) {\n    ema = data[i] * k + ema * (1 - k);\n  }\n  \n  return ema;\n}\n\n// Extract closing prices\nconst closes = priceData.map(p => parseFloat(p.close || p.price || p));\n\n// Calculate 12-period EMA\nconst ema12 = calculateEMA(closes, 12);\n\n// Calculate 26-period EMA\nconst ema26 = calculateEMA(closes, 26);\n\n// Calculate MACD Line\nconst macdLine = ema12 - ema26;\n\n// Calculate Signal Line (9-period EMA of MACD)\n// For simplicity, we'll use a basic approximation\nconst signalLine = macdLine * 0.2; // Simplified signal calculation\n\n// Calculate Histogram\nconst histogram = macdLine - signalLine;\n\n// Determine trading signal\nlet signal = 'NEUTRAL';\nlet strength = 0;\n\nif (histogram > 0 && macdLine > 0) {\n  signal = 'BUY';\n  strength = Math.min(histogram / Math.abs(macdLine) * 100, 100);\n} else if (histogram < 0 && macdLine < 0) {\n  signal = 'SELL';\n  strength = Math.min(Math.abs(histogram) / Math.abs(macdLine) * 100, 100);\n}\n\nreturn [{\n  json: {\n    indicator: 'MACDEXT',\n    macdLine: macdLine.toFixed(4),\n    signalLine: signalLine.toFixed(4),\n    histogram: histogram.toFixed(4),\n    ema12: ema12.toFixed(2),\n    ema26: ema26.toFixed(2),\n    signal: signal,\n    strength: strength.toFixed(2),\n    timestamp: new Date().toISOString()\n  }\n}];"
+      },
+      "id": "6d5ea395-5ea3-4b30-8997-bc65dbfd90ce",
+      "name": "Calculate MACDEXT",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        -592,
+        1664
+      ]
+    },
+    {
+      "parameters": {
+        "jsCode": "// Aggregate all technical indicator results from multiple inputs\nconst indicators = {};\n\n// Process all input items\nfor (const item of $input.all()) {\n  const json = item.json;\n  \n  // Merge all indicator data into the indicators object\n  Object.assign(indicators, json);\n}\n\n// Return aggregated technical analysis\nreturn [{\n  json: {\n    technicalAnalysis: indicators,\n    timestamp: new Date().toISOString()\n  }\n}];"
+      },
+      "id": "ae533d73-f1a8-45d2-89a8-cd16303c4fc4",
+      "name": "Aggregate Technical Analysis",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        288,
+        1056
+      ]
+    },
+    {
+      "parameters": {
+        "url": "https://www.okx.com/api/v5/market/ticker?instId=BTC-USDT",
+        "options": {
+          "response": {
+            "response": {
+              "responseFormat": "json"
+            }
+          }
+        }
+      },
+      "id": "191c1ab2-9098-400c-86e0-744388803816",
+      "name": "Fetch Market Data",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.3,
+      "position": [
+        -112,
+        1808
+      ]
+    },
+    {
+      "parameters": {
+        "assignments": {
+          "assignments": [
+            {
+              "id": "id-1",
+              "name": "price",
+              "value": "={{ $json.price }}",
+              "type": "string"
+            },
+            {
+              "id": "id-2",
+              "name": "volume24h",
+              "value": "={{ $json.volume }}",
+              "type": "string"
+            }
+          ]
+        },
+        "includeOtherFields": true,
+        "options": {}
+      },
+      "id": "2afb4c76-40fd-420d-ab1e-21cfab708084",
+      "name": "Extract Price and Volume",
+      "type": "n8n-nodes-base.set",
+      "typeVersion": 3.4,
+      "position": [
+        368,
+        1552
+      ]
+    },
+    {
+      "parameters": {
+        "url": "=https://newsapi.org/v2/everything?q=crypto",
+        "sendQuery": true,
+        "queryParameters": {
+          "parameters": [
+            {
+              "name": "q",
+              "value": "bitcoin"
+            },
+            {
+              "name": "pageSize",
+              "value": "5"
+            },
+            {
+              "name": "apiKey",
+              "value": "8eb25d9da0e04487bcddba1ff3cf5c47"
+            },
+            {
+              "name": "language",
+              "value": "en"
+            }
+          ]
+        },
+        "sendHeaders": true,
+        "headerParameters": {
+          "parameters": [
+            {
+              "name": "X-Api-Key",
+              "value": "8eb25d9da0e04487bcddba1ff3cf5c47"
+            }
+          ]
+        },
+        "options": {
+          "response": {
+            "response": {
+              "responseFormat": "json"
+            }
+          }
+        }
+      },
+      "id": "e459f375-2be5-4789-844e-6831700852ec",
+      "name": "Fetch Crypto News",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.3,
+      "position": [
+        -192,
+        2032
+      ]
+    },
+    {
+      "parameters": {
+        "assignments": {
+          "assignments": [
+            {
+              "id": "id-1",
+              "name": "headlines",
+              "value": "={{ $json.articles[0].title }}",
+              "type": "string"
+            }
+          ]
+        },
+        "includeOtherFields": true,
+        "options": {}
+      },
+      "id": "33f127f6-111f-4488-adb2-5760217aff91",
+      "name": "Extract News Headlines",
+      "type": "n8n-nodes-base.set",
+      "typeVersion": 3.4,
+      "position": [
+        192,
+        1984
+      ]
+    },
+    {
+      "parameters": {
+        "promptType": "define",
+        "text": "={{ 'Analyze these crypto news headlines: ' + $json.headlines }}",
+        "options": {
+          "systemMessage": "You are a cryptocurrency market sentiment analyst with expertise in evaluating news impact on crypto markets.\n\nYour task is to:\n1. Analyze the provided news headlines\n2. Evaluate the overall market sentiment\n3. Rate the sentiment impact on a scale from -1 (very negative) to +1 (very positive)\n4. Provide a brief explanation of key factors influencing the sentiment\n\nReturn your analysis with a sentiment score and brief reasoning."
+        }
+      },
+      "id": "1d48fef5-a022-462c-9320-a21600f240b6",
+      "name": "News Sentiment Analysis",
+      "type": "@n8n/n8n-nodes-langchain.agent",
+      "typeVersion": 3.1,
+      "position": [
+        592,
+        1936
+      ]
+    },
+    {
+      "parameters": {
+        "options": {}
+      },
+      "id": "c2202a4f-bff5-4b11-b4a9-35951b2f0bba",
+      "name": "Google Gemini Chat Model",
+      "type": "@n8n/n8n-nodes-langchain.lmChatGoogleGemini",
+      "typeVersion": 1,
+      "position": [
+        512,
+        2176
+      ],
+      "credentials": {
+        "googlePalmApi": {
+          "id": "uIKCV5WWEIj0h6kv",
+          "name": "Google Gemini(PaLM) Api account"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "sessionIdType": "customKey",
+        "sessionKey": "kdr_trading_session"
+      },
+      "id": "49012a46-1e4f-43e1-9c7c-d4c47e270caf",
+      "name": "Simple Memory",
+      "type": "@n8n/n8n-nodes-langchain.memoryBufferWindow",
+      "typeVersion": 1.3,
+      "position": [
+        672,
+        2176
+      ]
+    },
+    {
+      "parameters": {
+        "mode": "combine",
+        "combineBy": "combineAll",
+        "options": {}
+      },
+      "id": "daa6cb76-54ce-4c72-a3de-36171bf9b3e2",
+      "name": "Merge All Data",
+      "type": "n8n-nodes-base.merge",
+      "typeVersion": 3.2,
+      "position": [
+        800,
+        1632
+      ]
+    },
+    {
+      "parameters": {
+        "promptType": "define",
+        "text": "=Technical Analysis: {{ JSON.stringify($('Aggregate Technical Analysis').first().json) }}\n\nMarket Data: {{ JSON.stringify($('Extract Price and Volume').first().json) }}\n\nNews Sentiment: {{ JSON.stringify($('News Sentiment Analysis').first().json.output) }}",
+        "options": {
+          "systemMessage": "\"Sen profesyonel bir kripto analiz asistanısın. Sana gelen teknik verileri, piyasa hacmini ve haber duygu analizini harmanla.\n\nSenden şunları istiyorum:\n\nSadece Türkçe cevap ver.\n\nAnalizini çok sade ve anlaşılır tut (teknik jargon boğma).\n\nEn sonunda net bir karar ver: 'AL', 'SAT' veya 'BEKLE'.\n\nŞu formatı kullan: 📊 Piyasa Durumu: (Kısa bir cümle) 📰 Haber Etkisi: (Pozitif/Negatif/Nötr) 📈 Karar: (AL/SAT/BEKLE) 💡 Not: (En önemli risk veya fırsat)\""
+        }
+      },
+      "id": "397427d4-1296-4439-8322-f61d0da7a6c1",
+      "name": "AI Trading Decision",
+      "type": "@n8n/n8n-nodes-langchain.agent",
+      "typeVersion": 3.1,
+      "position": [
+        1424,
+        1632
+      ],
+      "retryOnFail": true,
+      "waitBetweenTries": 5000
+    },
+    {
+      "parameters": {
+        "options": {}
+      },
+      "id": "3f6d9403-dff5-4383-a6e5-de404560f7bf",
+      "name": "Google Gemini Chat Model1",
+      "type": "@n8n/n8n-nodes-langchain.lmChatGoogleGemini",
+      "typeVersion": 1,
+      "position": [
+        1360,
+        1920
+      ],
+      "credentials": {
+        "googlePalmApi": {
+          "id": "uIKCV5WWEIj0h6kv",
+          "name": "Google Gemini(PaLM) Api account"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "assignments": {
+          "assignments": [
+            {
+              "id": "id-1",
+              "name": "formattedMessage",
+              "value": "=🤖 **AI Analiz Sonucu**\n\n{{ $json.output }}\n\n⏰ Analiz Zamanı: {{ $now.format('HH:mm - DD/MM/YYYY') }}",
+              "type": "string"
+            }
+          ]
+        },
+        "includeOtherFields": true,
+        "options": {}
+      },
+      "id": "aa52afe9-31ca-463c-9f6f-d3bc74cc6c50",
+      "name": "Format Message for Telegram",
+      "type": "n8n-nodes-base.set",
+      "typeVersion": 3.4,
+      "position": [
+        1856,
+        1632
+      ]
+    },
+    {
+      "parameters": {
+        "chatId": "-1003538171171",
+        "text": "={{ $json.formattedMessage }}",
+        "additionalFields": {
+          "parse_mode": "HTML"
+        }
+      },
+      "id": "beb6e7f5-6b01-43da-80f6-e6070edb3938",
+      "name": "Send to Telegram",
+      "type": "n8n-nodes-base.telegram",
+      "typeVersion": 1.2,
+      "position": [
+        2224,
+        1632
+      ],
+      "webhookId": "7af8d0cd-ce15-448d-aebe-2984c93a6ee5",
+      "credentials": {
+        "telegramApi": {
+          "id": "cnXf8AHbWHbL6d9F",
+          "name": "Telegram account"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "mode": "combine",
+        "combineBy": "combineAll",
+        "options": {}
+      },
+      "id": "804f280f-a4d7-40c6-a22b-3f8e0f9d4058",
+      "name": "Merge All Data1",
+      "type": "n8n-nodes-base.merge",
+      "typeVersion": 3.2,
+      "position": [
+        1072,
+        1648
+      ]
+    },
+    {
+      "parameters": {
+        "rule": {
+          "interval": [
+            {
+              "field": "hours",
+              "triggerAtMinute": 5
+            }
+          ]
+        }
+      },
+      "type": "n8n-nodes-base.scheduleTrigger",
+      "typeVersion": 1.3,
+      "position": [
+        -1712,
+        1824
+      ],
+      "id": "3f389e8c-29cb-4814-a647-f1d0efda3b6c",
+      "name": "Schedule Trigger"
+    }
+  ],
+  "pinData": {},
+  "connections": {
+    "Workflow Configuration": {
+      "main": [
+        [
+          {
+            "node": "Wait 1",
+            "type": "main",
+            "index": 0
+          },
+          {
+            "node": "Wait 2",
+            "type": "main",
+            "index": 0
+          },
+          {
+            "node": "Wait 3",
+            "type": "main",
+            "index": 0
+          },
+          {
+            "node": "Fetch Market Data",
+            "type": "main",
+            "index": 0
+          },
+          {
+            "node": "Fetch Crypto News",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Wait 1": {
+      "main": [
+        [
+          {
+            "node": "Calculate RSI",
+            "type": "main",
+            "index": 0
+          },
+          {
+            "node": "Calculate STOCH",
+            "type": "main",
+            "index": 0
+          },
+          {
+            "node": "Calculate ADX",
+            "type": "main",
+            "index": 0
+          },
+          {
+            "node": "Calculate SMA",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Wait 2": {
+      "main": [
+        [
+          {
+            "node": "Calculate BB",
+            "type": "main",
+            "index": 0
+          },
+          {
+            "node": "Calculate CCI",
+            "type": "main",
+            "index": 0
+          },
+          {
+            "node": "Calculate EMA",
+            "type": "main",
+            "index": 0
+          },
+          {
+            "node": "Calculate RVI",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Wait 3": {
+      "main": [
+        [
+          {
+            "node": "Calculate MFI",
+            "type": "main",
+            "index": 0
+          },
+          {
+            "node": "Calculate MOM",
+            "type": "main",
+            "index": 0
+          },
+          {
+            "node": "Calculate T3",
+            "type": "main",
+            "index": 0
+          },
+          {
+            "node": "Calculate MACDEXT",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Calculate RSI": {
+      "main": [
+        [
+          {
+            "node": "Aggregate Technical Analysis",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Calculate STOCH": {
+      "main": [
+        [
+          {
+            "node": "Aggregate Technical Analysis",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Calculate ADX": {
+      "main": [
+        [
+          {
+            "node": "Aggregate Technical Analysis",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Calculate SMA": {
+      "main": [
+        [
+          {
+            "node": "Aggregate Technical Analysis",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Calculate BB": {
+      "main": [
+        [
+          {
+            "node": "Aggregate Technical Analysis",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Calculate CCI": {
+      "main": [
+        [
+          {
+            "node": "Aggregate Technical Analysis",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Calculate EMA": {
+      "main": [
+        [
+          {
+            "node": "Aggregate Technical Analysis",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Calculate RVI": {
+      "main": [
+        [
+          {
+            "node": "Aggregate Technical Analysis",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Calculate MFI": {
+      "main": [
+        [
+          {
+            "node": "Aggregate Technical Analysis",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Calculate MOM": {
+      "main": [
+        [
+          {
+            "node": "Aggregate Technical Analysis",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Calculate T3": {
+      "main": [
+        [
+          {
+            "node": "Aggregate Technical Analysis",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Calculate MACDEXT": {
+      "main": [
+        [
+          {
+            "node": "Aggregate Technical Analysis",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Fetch Market Data": {
+      "main": [
+        [
+          {
+            "node": "Extract Price and Volume",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Fetch Crypto News": {
+      "main": [
+        [
+          {
+            "node": "Extract News Headlines",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Extract News Headlines": {
+      "main": [
+        [
+          {
+            "node": "News Sentiment Analysis",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Google Gemini Chat Model": {
+      "ai_languageModel": [
+        [
+          {
+            "node": "News Sentiment Analysis",
+            "type": "ai_languageModel",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Simple Memory": {
+      "ai_memory": [
+        [
+          {
+            "node": "News Sentiment Analysis",
+            "type": "ai_memory",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Aggregate Technical Analysis": {
+      "main": [
+        [
+          {
+            "node": "Merge All Data",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Extract Price and Volume": {
+      "main": [
+        [
+          {
+            "node": "Merge All Data",
+            "type": "main",
+            "index": 1
+          }
+        ]
+      ]
+    },
+    "Merge All Data": {
+      "main": [
+        [
+          {
+            "node": "Merge All Data1",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Google Gemini Chat Model1": {
+      "ai_languageModel": [
+        [
+          {
+            "node": "AI Trading Decision",
+            "type": "ai_languageModel",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "AI Trading Decision": {
+      "main": [
+        [
+          {
+            "node": "Format Message for Telegram",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Format Message for Telegram": {
+      "main": [
+        [
+          {
+            "node": "Send to Telegram",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "News Sentiment Analysis": {
+      "main": [
+        [
+          {
+            "node": "Merge All Data1",
+            "type": "main",
+            "index": 1
+          }
+        ]
+      ]
+    },
+    "Merge All Data1": {
+      "main": [
+        [
+          {
+            "node": "AI Trading Decision",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Schedule Trigger": {
+      "main": [
+        [
+          {
+            "node": "Workflow Configuration",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    }
+  },
+  "active": true,
+  "settings": {
+    "executionOrder": "v1",
+    "availableInMCP": false
+  },
+  "versionId": "762689b4-5abc-4d6e-be08-323216ea9af2",
+  "meta": {
+    "templateCredsSetupCompleted": true,
+    "instanceId": "b7cadb0b02b84c20e462c082fe7cbb2474f630b7e03cb065f599fac020e3f66a"
+  },
+  "id": "I3CqoZfMNAr-5mwiZSIIv",
+  "tags": []
+}
